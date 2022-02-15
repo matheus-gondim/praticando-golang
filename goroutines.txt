@@ -1,0 +1,209 @@
+*** INTO ***
+
+Simultaneidade significa que vários cálculos estão acontecendo ao mesmo tempo. Ele é usado quando seu programa tem várias coisas a fazer.
+
+A simultaneidade é a criação de vários processos executados de forma independente.
+
+Por exemplo, imagine um jogo de tiro, onde muitas coisas estão acontecendo ao mesmo tempo: os inimigos estão correndo e atirando, os pontos estão sendo calculados, as armas estão sendo desbloqueadas, etc.
+
+Todas essas coisas precisam estar acontecendo simultaneamente. Para usar a simultaneidade, o programa é dividido em partes, que são executadas separadamente.
+
+Para alcançar a simultaneidade, Go fornece Goroutines.
+
+Um Goroutine é muito parecido com um thread para realizar várias tarefas, mas consome menos recursos do que os threads do sistema operacional.
+
+Quando um programa é dividido em tarefas separadas, cada Goroutine pode ser usada para realizar uma tarefa, permitindo a simultaneidade em nosso programa.
+
+Goroutines não são threads de SO: são threads virtuais; gerido por Go. Você pode ter milhares de Goroutines em execução em um programa Go
+
+Um Goroutine consome mais recursos do que um thread do sistema operacional.
+
+
+*** GOROUTIMES ***
+
+Vamos dar uma olhada no seguinte programa:
+
+	func out(from, to int) {
+		for i := from; i <= to; i++ {
+			time.Sleep(50 * time.Millisecond)
+			fmt.Println(i)
+		}
+	}
+	
+	func main() {
+		out(0, 5)
+		out(6, 10)
+	}
+
+A função out() simplesmente exibe números no intervalo fornecido. Usamos time.Sleep() para emular o trabalho que está sendo feito entre as saídas apenas para fins de demonstração. Ele simplesmente espera o tempo fornecido (50ms) antes de continuar a execução.
+
+Agora, se chamarmos a função em main duas vezes, a primeira chamada será executada primeiro, seguida pela segunda chamada. Isso gerará a saída de 0 a 5, depois de 6 a 10.
+
+Isso é chamado de programa sequencial, pois as instruções são executadas uma após a outra. A primeira chamada precisa ser concluída, antes do início da segunda chamada.
+
+Ao executar programas simultâneos, não é comum esperar que uma tarefa seja concluída antes de iniciar uma nova. Para obter simultaneidade, vamos iniciar as chamadas de função como Goroutines, usando a palavra-chave go:
+
+	go out(0, 5)
+	go out(6, 10)
+
+Como você pode ver, é muito simples iniciar um Goroutine - simplesmente precisamos adicionar uma palavra-chave go antes da chamada da função.
+
+Se executarmos o programa, obteremos uma saída surpreendente - resultará em Sem saída. Mas por que? Essa saída ocorre porque a função main() é encerrada antes da conclusão dos Goroutines.
+
+Existe um mecanismo para sincronizar os Goroutines para que saibamos quando um completa sua execução em main(). Antes de aprender sobre esse mecanismo, vamos adicionar um time.Sleep () ao final da função main () para ver os Goroutines em ação:
+
+	go out(0, 5)
+	go out(6, 10)
+	time.Sleep(500 * time.Millisecond)
+
+A espera de 500ms deve ser tempo suficiente para que os Goroutines terminem de executar e gerar a saída.
+
+
+*** CHANNELS ***
+
+Como vimos na lição anterior, os Goroutines são executados de forma independente e não sabem quando outro terminou de ser executado. Isso faz com que, por exemplo, a função main () seja encerrada, antes que qualquer Goroutine iniciado termine.
+
+Para habilitar a comunicação entre Goroutines, Go fornece canais.
+
+Um canal é como um tubo, permitindo que você envie e receba dados de Goroutines e que se comuniquem e sincronizem.
+
+Semelhante a como a água flui de uma extremidade a outra em um tubo, os dados podem ser enviados de uma extremidade e recebidos pela outra extremidade usando canais.
+
+Para usar um canal, primeiro precisamos fazer um usando a função make ():
+
+	ch := make(chan int) 
+
+O tipo após a palavra-chave chan indica o tipo de dados que enviaremos através do canal.
+
+Podemos enviar dados para o canal usando a seguinte sintaxe:
+	
+	ch <- 8
+
+Da mesma forma, podemos receber dados do canal usando a seguinte sintaxe:
+
+	value := <- ch 
+
+Se não precisarmos do valor como uma variável, podemos simplesmente usar:
+
+	<- ch
+
+Agora podemos usar nosso canal e reescrever o exemplo anterior sem um time.Sleep() na main(): 
+
+	func out(from, to int, ch chan bool) {
+		for i := from; i <= to; i++ {
+			time.Sleep(50 * time.Millisecond)
+			fmt.Println(i)
+		}
+		ch <- true
+	}
+	
+	func main() {
+		ch := make(chan bool)
+
+		go out(0, 5, ch)
+		go out(6, 10, ch)
+
+		<- ch
+	}
+
+Definimos um canal bool e o passamos para nossa função out() como um argumento. Depois que a função termina sua tarefa, enviamos o valor true para o canal, que é recebido em main().
+
+Agora, main() está esperando para receber dados do canal, fazendo com que o programa espere que os Goroutines terminem de ser executados.
+
+Vamos usar um canal para enviar dados de um Goroutine e usá-lo em main().
+
+Nosso programa precisa calcular e produzir a soma de todos os números pares em um determinado intervalo mais a soma de seus quadrados e gerar o resultado: output = evenSum + squareSum
+
+Usaremos duas Goroutines: uma para calcular a soma par e a outra para calcular a soma quadrada.
+
+Obteremos os dados usando canais em main(), então calcularemos e produziremos a soma final.
+
+
+	func evenSum(from, to int, ch chan int) {
+		result := 0
+		for i:=from; i<=to; i++ {
+			if i%2 == 0 {
+		      	result += i
+			}    
+		}
+		ch <- result
+	}
+
+	func squareSum(from, to int, ch chan int) {
+		result := 0
+		for i:=from; i<=to; i++ {
+			if i%2 == 0 {
+			      result += i*i
+			}    
+		}
+		ch <- result
+	} 
+
+Como você pode ver, nossas funções enviam o resultado via canais. Agora podemos chamá-los de Goroutines em main() e gerar a soma resultante:
+
+	func main() {
+		evenCh := make(chan int)
+		sqCh := make(chan int)
+
+		go evenSum(0, 100, evenCh)
+		go squareSum(0, 100, sqCh)
+
+		fmt.Println(<- evenCh + <- sqCh)
+	}
+
+Usamos os canais para obter o resultado de cada Goroutine e produzir sua soma.
+
+Se você não precisa mais enviar dados para um canal, pode fechá-lo usando close (ch), onde ch é o nome do canal. Isso é feito no remetente.
+
+
+*** SELECT ***
+
+A instrução select é usada para esperar em várias operações de canal.
+
+A sintaxe é semelhante a switch, exceto que cada uma das instruções case será uma operação de canal. Vamos usar o mesmo programa do nosso exemplo anterior e selecionar o canal que está pronto primeiro:
+
+	func main() {
+		evenCh := make(chan int)
+		sqCh := make(chan int)
+
+		go evenSum(0, 100, evenCh)
+		go squareSum(0, 100, sqCh)
+
+		select {
+			case x := <- evenCh:
+				fmt.Println(x)
+			case y := <- sqCh
+				fmt.Println(y)
+		}
+	}
+
+A instrução select espera que um canal receba dados e executa seu caso. Isso significa que apenas um dos casos será executado - aquele que corresponde ao canal que recebe os dados primeiro.
+
+Se ambos os canais recebem dados ao mesmo tempo, um dos casos é escolhido aleatoriamente.
+
+Um select pode ter um caso padrão, que será executado quando nenhum canal estiver pronto. Por exemplo, poderíamos ter um loop for infinito, esperando por um dos canais para receber os dados:
+
+	func main() {
+		evenCh := make(chan int)
+		sqCh := make(chan int)
+
+		go evenSum(0, 100, evenCh)
+		go squareSum(0, 100, sqCh)
+		
+		for {	
+			select {
+				case x := <- evenCh:
+					fmt.Println(x)
+				case y := <- sqCh
+					fmt.Println(y)
+				default:
+					fmt.Println("Nothing available")
+					time.Sleep(50 * time.Milisecond)
+			}
+		}
+	}
+
+O loop for usa um select para verificar qual canal obteve dados. Se nenhum deles estiver pronto, o caso padrão será executado e aguardará 50ms. Assim que um canal obtém dados, a instrução de retorno sairá do loop.
+
+Uma instrução selecionada bloqueia até que pelo menos um de seus casos possa prosseguir. O caso padrão é útil na prevenção de deadlocks - sem ele, o select esperaria por um canal para sempre, travando o programa se nenhum dos canais recebesse dados.
+
